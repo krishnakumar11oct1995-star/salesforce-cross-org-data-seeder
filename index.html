@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Salesforce Data Seeder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-title">
+      <span class="icon">⚡</span>
+      <div>
+        <h1>SF Data Seeder</h1>
+        <span class="sub-title">Cross-Org Relational Mover</span>
+      </div>
+    </div>
+    <span id="session-badge" class="badge badge-warning">Checking...</span>
+  </header>
+
+  <!-- Step Progress Indicator -->
+  <nav class="step-indicator">
+    <div class="step-line"></div>
+    <div class="step-item active" data-step="1">
+      <div class="step-bubble">1</div>
+      <span class="step-label">Orgs</span>
+    </div>
+    <div class="step-item" data-step="2">
+      <div class="step-bubble">2</div>
+      <span class="step-label">Object</span>
+    </div>
+    <div class="step-item" data-step="3">
+      <div class="step-bubble">3</div>
+      <span class="step-label">Trees</span>
+    </div>
+    <div class="step-item" data-step="4">
+      <div class="step-bubble">4</div>
+      <span class="step-label">Sizing</span>
+    </div>
+    <div class="step-item" data-step="5">
+      <div class="step-bubble">5</div>
+      <span class="step-label">Deploy</span>
+    </div>
+  </nav>
+
+  <!-- Main Multi-Step Content -->
+  <main class="app-container">
+
+    <!-- STEP 1: ORG SWITCHER -->
+    <section id="step-1" class="wizard-step active">
+      <div class="card">
+        <div class="card-header">
+          <h2>1. Source Environment</h2>
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-login-source" class="btn btn-secondary btn-sm">Direct Login</button>
+            <button id="btn-refresh-source" class="btn-link">↻ Refresh Tab</button>
+          </div>
+        </div>
+        <div id="source-org-status" class="status-container">
+          <div class="spinner"></div>
+          <span>Detecting active Salesforce tab...</span>
+        </div>
+
+        <!-- Source Direct Login Modal -->
+        <div id="source-login-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Login to Source Org</h3>
+              <span class="sub-text">Use when browser cookies are locked by Salesforce session policies.</span>
+            </div>
+            <div class="form-group">
+              <label for="src-url">Environment Type</label>
+              <select id="src-url" class="form-control">
+                <option value="https://test.salesforce.com">Sandbox (test.salesforce.com)</option>
+                <option value="https://login.salesforce.com">Production / Dev (login.salesforce.com)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="src-username">Source Username</label>
+              <input type="text" id="src-username" class="form-control font-mono" placeholder="user@example.com.sandbox">
+            </div>
+            <div class="form-group">
+              <label for="src-password">Source Password</label>
+              <input type="password" id="src-password" class="form-control" placeholder="Password or Password + Token">
+            </div>
+            <div class="modal-actions">
+              <button id="btn-cancel-src-modal" class="btn btn-ghost">Cancel</button>
+              <button id="btn-submit-src-login" class="btn btn-primary">Connect Source Org</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>2. Target Sandbox Destination</h2>
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-sync-source" class="btn btn-primary btn-sm" title="Use the same active tab as Target Org">⚡ Use Same Org</button>
+            <button id="btn-clear-targets" class="btn btn-ghost btn-sm" title="Clear all stored target orgs" style="color: #ea001e;">✕ Clear</button>
+            <button id="btn-add-target" class="btn btn-secondary btn-sm">+ Add Target Org</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="target-org-select" style="margin-bottom: 0;">Select Target Org</label>
+            <button id="btn-remove-selected-target" class="btn btn-ghost btn-sm" title="Remove currently selected target org" style="color: #ea001e; font-size: 11px; padding: 2px 6px;">
+              🗑️ Remove
+            </button>
+          </div>
+          <select id="target-org-select" class="form-control">
+            <option value="">-- No sandboxes connected --</option>
+          </select>
+          <small id="target-status-label" style="color: #2e844a; display: block; margin-top: 4px; font-weight: 500;">● Connected (Sandbox Destination)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="target-ext-id">Target External ID Field (for Upserts)</label>
+          <input type="text" id="target-ext-id" class="form-control font-mono" value="Source_Record_Id__c">
+        </div>
+
+        <!-- Target Direct Login Modal -->
+        <div id="connect-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Connect Target Sandbox</h3>
+              <span class="sub-text">Direct Login or Link Active Tab</span>
+            </div>
+
+            <div style="margin-bottom: 12px; padding: 10px; background: rgba(1, 118, 211, 0.08); border: 1px solid rgba(1, 118, 211, 0.25); border-radius: 6px;">
+              <div style="font-size: 11px; color: #1e293b; margin-bottom: 6px; font-weight: 600;">
+                ⚡ Recommended (Bypasses Passwords & Permissions):
+              </div>
+              <button type="button" id="btn-modal-use-active" class="btn btn-primary btn-sm" style="width: 100%;">
+                🔗 Link Active Salesforce Tab as Target
+              </button>
+            </div>
+
+            <div style="text-align: center; color: #888; font-size: 10px; margin-bottom: 10px; font-weight: 700; letter-spacing: 0.5px;">— OR ENTER CREDENTIALS —</div>
+            <div class="form-group">
+              <label for="direct-alias">Alias Name</label>
+              <input type="text" id="direct-alias" class="form-control" placeholder="e.g. Stage_Sandbox">
+            </div>
+            <div class="form-group">
+              <label for="direct-url">Environment Type</label>
+              <select id="direct-url" class="form-control">
+                <option value="https://test.salesforce.com">Sandbox (test.salesforce.com)</option>
+                <option value="https://login.salesforce.com">Production / Dev (login.salesforce.com)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="direct-username">Target Username</label>
+              <input type="text" id="direct-username" class="form-control font-mono" placeholder="user@example.com.sandbox">
+            </div>
+            <div class="form-group">
+              <label for="direct-password">Target Password</label>
+              <input type="password" id="direct-password" class="form-control" placeholder="Password or Password + Token">
+            </div>
+            <div class="modal-actions">
+              <button id="btn-cancel-modal" class="btn btn-ghost">Cancel</button>
+              <button id="btn-submit-direct" class="btn btn-primary">Login & Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-step1-next" class="btn btn-primary btn-block">Next: Select Object & Filter →</button>
+    </section>
+
+    <!-- STEP 2: ROOT OBJECT & RECIPES -->
+    <section id="step-2" class="wizard-step">
+      <!-- Saved Recipes Quick Load -->
+      <div class="card">
+        <div class="flex-between mb-1">
+          <h2>Seeding Recipes (Templates)</h2>
+          <button id="btn-save-recipe-modal" class="btn-link text-primary font-semibold">+ Save Recipe</button>
+        </div>
+        <select id="recipe-select" class="form-control">
+          <option value="">-- Load Saved Recipe --</option>
+        </select>
+      </div>
+
+      <!-- Data Mode Selector (Extract vs Synthetic Mock) -->
+      <div class="card">
+        <h2>Data Mode</h2>
+        <div style="display: flex; gap: 12px; margin-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
+            <input type="radio" name="data-mode" id="mode-extract" value="EXTRACT" checked>
+            <span>📥 Extract Source Data</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; font-weight: 600; color: #0176d3;">
+            <input type="radio" name="data-mode" id="mode-mock" value="MOCK">
+            <span>🤖 Generate Dummy Data</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Root SObject Selection</h2>
+        <div class="form-group">
+          <input type="text" id="object-search" class="form-control" placeholder="Search standard & custom objects...">
+        </div>
+        <div id="objects-list" class="scrollable-list">
+          <div class="text-muted p-2 text-center">Loading objects...</div>
+        </div>
+
+        <div id="soql-filter-group" class="form-group mt-2">
+          <label for="soql-where">SOQL Filter (WHERE Clause)</label>
+          <input type="text" id="soql-where" class="form-control font-mono" placeholder="e.g. Status__c = 'Active'">
+        </div>
+
+        <div id="mock-config-group" class="form-group mt-2 hidden">
+          <div class="flex-between">
+            <label for="mock-children-count">Child Records per Root</label>
+            <span id="mock-children-val" class="font-bold text-primary font-mono">2 children</span>
+          </div>
+          <input type="range" id="mock-children-count" min="1" max="5" step="1" value="2" class="range-slider">
+        </div>
+
+        <div class="form-group">
+          <div class="flex-between">
+            <label for="record-limit" id="record-count-label">Record Count</label>
+            <span id="limit-val" class="font-bold text-primary font-mono">20 records</span>
+          </div>
+          <input type="range" id="record-limit" min="1" max="200" step="5" value="20" class="range-slider">
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-back" data-target="1">← Back</button>
+        <button id="btn-step2-next" class="btn btn-primary flex-2">Next: Map Relationships →</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: RELATIONAL TREES -->
+    <section id="step-3" class="wizard-step">
+      <div class="card p-0 overflow-hidden">
+        <div class="tabs-header">
+          <button id="tab-parents" class="tab-btn active">Parents (<span id="parents-count">0</span>)</button>
+          <button id="tab-children" class="tab-btn">Child Trees (<span id="children-count">0</span>)</button>
+        </div>
+
+        <div id="tab-content-parents" class="tab-content active p-2">
+          <div id="parents-list" class="scrollable-list"></div>
+        </div>
+
+        <div id="tab-content-children" class="tab-content p-2">
+          <div id="children-list" class="scrollable-list"></div>
+        </div>
+      </div>
+
+      <!-- Enterprise Safety & Anonymization Card -->
+      <div class="card">
+        <h3>Enterprise Safety & Compliance</h3>
+        <div class="space-y-1.5" style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+          <label class="flex items-center space-x-2" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-auto-rt" checked class="w-3.5 h-3.5">
+            <span>🏷️ <strong>Auto-Map RecordTypes</strong> by DeveloperName</span>
+          </label>
+          <label class="flex items-center space-x-2" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-reassign-owner" checked class="w-3.5 h-3.5">
+            <span>👤 <strong>Re-assign OwnerId</strong> to Target Logged-in User</span>
+          </label>
+          <label class="flex items-center space-x-2" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-mask-emails" checked class="w-3.5 h-3.5">
+            <span>🎭 <strong>Mask Emails</strong> (<code>user_xxx@example.invalid</code>)</span>
+          </label>
+          <label class="flex items-center space-x-2" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-mask-phones" checked class="w-3.5 h-3.5">
+            <span>📞 <strong>Mask Phone Numbers</strong> (<code>555-019-XXXX</code>)</span>
+          </label>
+          <label class="flex items-center space-x-2" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-mask-names" class="w-3.5 h-3.5">
+            <span>🔒 <strong>Anonymize Person Names</strong> (First/Last &rarr; Test)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-back" data-target="2">← Back</button>
+        <button id="btn-step3-next" class="btn btn-primary flex-2">Next: Storage Sizing →</button>
+      </div>
+    </section>
+
+    <!-- STEP 4: STORAGE SIZING & SCHEMA PRE-VALIDATION -->
+    <section id="step-4" class="wizard-step">
+      <div class="card">
+        <h2>Predictive Storage Sizing</h2>
+        <div class="flex-between mb-1">
+          <span id="storage-footprint-text" class="font-bold">Estimated: 0.00 MB</span>
+          <span class="text-muted">Quota: 200 MB</span>
+        </div>
+        <div class="progress-bar-container">
+          <div id="storage-progress" class="progress-bar bg-success" style="width: 2%;"></div>
+        </div>
+        <span id="quota-percent-text" class="text-muted text-right block mt-0.5" style="font-size: 10px;">0% of sandbox quota</span>
+
+        <div class="stats-grid mt-2">
+          <div class="stat-box">
+            <span class="stat-label">Root Records</span>
+            <span id="stat-root-count" class="stat-val">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Parent Lookups</span>
+            <span id="stat-parent-count" class="stat-val">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Child Trees</span>
+            <span id="stat-child-count" class="stat-val">0</span>
+          </div>
+          <div class="stat-box stat-highlight">
+            <span class="stat-label">Total Records</span>
+            <span id="stat-total-count" class="stat-val">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Schema Compatibility Audit</h3>
+        <div class="audit-list">
+          <div class="audit-item audit-success">
+            <span>✓ Matched Fields:</span>
+            <span id="audit-matched-count" class="font-bold">0</span>
+          </div>
+          <div class="audit-item audit-warning" id="audit-missing-row">
+            <span>⚠️ Missing in Target (Excluded):</span>
+            <span id="audit-missing-count" class="font-bold">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-back" data-target="3">← Back</button>
+        <button id="btn-step4-next" class="btn btn-success flex-2">Initiate 3-Tier Seeding ⚡</button>
+      </div>
+    </section>
+
+    <!-- STEP 5: EXECUTION & PURGE CONSOLE -->
+    <section id="step-5" class="wizard-step">
+      <div class="card">
+        <div class="flex-between">
+          <h2>Execution Console</h2>
+          <span id="exec-badge" class="badge badge-secondary">IDLE</span>
+        </div>
+
+        <div class="mt-1">
+          <div class="flex-between text-muted" style="font-size: 11px; margin-bottom: 3px;">
+            <span id="exec-progress-text">Progress: 0%</span>
+            <span id="exec-batch-text">Batches: 0/0</span>
+          </div>
+          <div class="progress-bar-container">
+            <div id="exec-progress-bar" class="progress-bar bg-primary" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="stats-grid mt-2">
+          <div class="stat-box stat-success">
+            <span class="stat-label">Successful Graphs</span>
+            <span id="stat-success-graphs" class="stat-val">0</span>
+          </div>
+          <div class="stat-box stat-error">
+            <span class="stat-label">Failed Graphs</span>
+            <span id="stat-failed-graphs" class="stat-val">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Terminal -->
+      <div class="card console-card">
+        <div class="card-header">
+          <span class="console-title">Live Activity Stream</span>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-copy-logs" class="btn-link text-primary font-semibold">📋 Copy Stream</button>
+            <button id="btn-clear-logs" class="btn-link text-muted">Clear</button>
+          </div>
+        </div>
+        <div id="console-logs" class="console-box"></div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-back" data-target="4">← Back</button>
+        <button id="btn-purge-data" class="btn btn-secondary" title="Rollback / Delete Seeded Records from Target Org" style="color: #ea001e; border-color: #f8b4b4;">🧹 Purge Data</button>
+        <button id="btn-start-seeding" class="btn btn-primary flex-2">Start Seeding ⚡</button>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
