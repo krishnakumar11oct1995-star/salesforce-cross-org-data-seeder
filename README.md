@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./icons/logo.png" alt="salesforce-cross-org-data-seeder Logo" width="160" />
+</p>
+
 # Salesforce Cross-Org Data Seeder (Chrome Extension)
 
 > Manifest V3 Chrome Extension for Salesforce relational data migration, schema pre-validation, and predictive storage sizing.

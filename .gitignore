@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.zip
 .DS_Store
+
+!icons/logo.png
+!assets/
+!assets/**
