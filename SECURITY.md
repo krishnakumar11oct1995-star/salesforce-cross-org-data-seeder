@@ -13,9 +13,7 @@
 ```json
 "host_permissions": [
   "https://*.salesforce.com/*",
-  "https://*.force.com/*",
-  "https://*.my.salesforce.com/*",
-  "https://*.lightning.force.com/*"
+  "https://*.force.com/*"
 ]
 ```
 
@@ -24,13 +22,20 @@
 
 ---
 
-## 3. Credential & Token Storage Architecture
+## 3. Authentication Model & Credential Storage
 
-| Token Type | Storage Medium | Lifecycle | Security Rationale |
-|---|---|---|---|
-| **Active Tab Session (`sid`)** | `chrome.storage.session` | Memory only (destroyed on browser close) | Prevents long-term disk persistence of active user UI sessions. |
-| **Target Sandbox Refresh Token** | `chrome.storage.local` | Sandboxed per Extension ID | Encrypted and isolated by Chrome's sandbox; revoked via `/services/oauth2/revoke` on disconnect. |
-| **PKCE Verifier & Challenge** | Memory / Ephemeral | Single OAuth exchange lifecycle | Generated using `crypto.subtle` (SHA-256) and discarded immediately after code exchange. |
+The extension does **not** use OAuth or PKCE. It supports two ways of obtaining a Salesforce session:
+
+1. **Active tab session:** the background service worker reads the `sid` cookie for the *exact* org domain of the Salesforce tab (the org's `*.my.salesforce.com` API host or the tab's own host). It never falls back to a `sid` cookie from a different org; if no exact match exists, an error is returned to the UI.
+2. **Direct Login (SOAP username-password):** the user enters username, password (plus security token if required) and the extension calls the Salesforce SOAP `login()` endpoint (`/services/Soap/u/61.0`). The returned `sessionId` is used as the bearer token for REST calls.
+
+| Item | Storage | Lifecycle |
+|---|---|---|
+| **Password** | Not stored. Held only in memory for the single SOAP login request. | Discarded after the request. Credentials cached by older versions are cleared on next login. |
+| **Source org session (`sid` cookie or SOAP `sessionId`)** | `chrome.storage.session` (`activeSalesforceSession`) | In memory; cleared when the browser closes. |
+| **Target org session (`sessionId`) + org metadata** | `chrome.storage.local` | Persists until the org is disconnected or "clear all" is used. The token expires per the org's session timeout policy. |
+
+When a session expires the extension does **not** re-login silently. The user is prompted to refresh the Salesforce tab or log in again via Direct Login.
 
 ---
 

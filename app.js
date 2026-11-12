@@ -8,6 +8,7 @@ import { SchemaEngine } from './schemaEngine.js';
 import { GraphBuilder } from './graphBuilder.js';
 import { RecipeManager } from './recipeManager.js';
 import { MockDataGenerator } from './mockDataGenerator.js';
+import { assertApiName, formatIdList, formatStringList } from './soqlUtils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // State
@@ -898,16 +899,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!childFieldNames.some(f => f.toLowerCase() === c.foreignKeyField.toLowerCase())) {
               childFieldNames.push(c.foreignKeyField);
             }
-            childSubqueries.push(`(SELECT ${childFieldNames.join(', ')} FROM ${c.relationshipName})`);
+            childSubqueries.push(`(SELECT ${childFieldNames.map(assertApiName).join(', ')} FROM ${assertApiName(c.relationshipName)})`);
           } catch (cErr) {
             console.warn(`[ChildDescribe] Fallback for ${c.relationshipName}: ${cErr.message}`);
-            childSubqueries.push(`(SELECT Id, ${c.foreignKeyField} FROM ${c.relationshipName})`);
+            childSubqueries.push(`(SELECT Id, ${assertApiName(c.foreignKeyField)} FROM ${assertApiName(c.relationshipName)})`);
           }
         }
 
-        let rootSoql = `SELECT ${[...selectedFields, ...childSubqueries].join(', ')} FROM ${selectedRootObject}`;
+        let rootSoql = `SELECT ${[...selectedFields.map(assertApiName), ...childSubqueries].join(', ')} FROM ${assertApiName(selectedRootObject)}`;
         if (where) rootSoql += ` WHERE ${where}`;
-        rootSoql += ` LIMIT ${limit}`;
+        rootSoql += ` LIMIT ${Math.max(1, Math.min(50000, parseInt(limit, 10) || 1))}`;
 
         log(`Executing Source SOQL: ${rootSoql.substring(0, 100)}...`, 'info');
         rootRecords = await ApiClient.querySOQL(
@@ -1028,7 +1029,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             for (let cIdx = 0; cIdx < parentIds.length; cIdx += PARENT_CHUNK_SIZE) {
               const idChunk = parentIds.slice(cIdx, cIdx + PARENT_CHUNK_SIZE);
-              const pSoql = `SELECT ${pFields} FROM ${p.parentObjectApiName} WHERE Id IN (${idChunk.map(id => `'${id}'`).join(',')})`;
+              const pSoql = `SELECT ${pFields} FROM ${assertApiName(p.parentObjectApiName)} WHERE Id IN (${formatIdList(idChunk)})`;
 
               const pRecords = await ApiClient.querySOQL(
                 sourceSession.instanceUrl,
@@ -1068,7 +1069,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             log(`Querying ${uniqueMissing.length} upstream parent records for ${p.parentObjectApiName}...`, 'info');
             const parentDesc = await SchemaEngine.describeSObject(sourceSession.instanceUrl, sourceSession, p.parentObjectApiName);
             const pFields = parentDesc.fields.filter(f => f.createable || f.idLookup).map(f => f.name).join(', ');
-            const pSoql = `SELECT ${pFields} FROM ${p.parentObjectApiName} WHERE Id IN (${uniqueMissing.map(id => `'${id}'`).join(',')})`;
+            const pSoql = `SELECT ${pFields} FROM ${assertApiName(p.parentObjectApiName)} WHERE Id IN (${formatIdList(uniqueMissing)})`;
             const pRecords = await ApiClient.querySOQL(sourceSession.instanceUrl, sourceSession.sessionId, pSoql, 2000, { sourceSession });
             pRecords.forEach(pr => { if (pr.Id) parentRecordMap.set(pr.Id, pr); });
           }
@@ -1198,10 +1199,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (numbers.length === 0) continue;
                 formattedClause = numbers.join(',');
               } else {
-                formattedClause = valChunk.map(v => `'${String(v).replace(/'/g, "\\'")}'`).join(',');
+                formattedClause = formatStringList(valChunk);
               }
 
-              const targetSoql = `SELECT Id, ${pExtId} FROM ${p.parentObjectApiName} WHERE ${pExtId} IN (${formattedClause})`;
+              const targetSoql = `SELECT Id, ${assertApiName(pExtId)} FROM ${assertApiName(p.parentObjectApiName)} WHERE ${assertApiName(pExtId)} IN (${formattedClause})`;
 
               try {
                 const targetMatches = await ApiClient.querySOQL(

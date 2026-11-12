@@ -4,6 +4,7 @@ import { ApiClient } from '../apiClient';
 import { SchemaEngine } from '../schemaEngine';
 import { GraphBuilder } from '../graphBuilder';
 import { SObjectRecordData } from '../types';
+import { assertApiName, formatIdList } from '../soqlUtils';
 
 export const Step5ExecutionConsole: React.FC = () => {
   const {
@@ -77,14 +78,14 @@ export const Step5ExecutionConsole: React.FC = () => {
       // Add child sub-queries
       const childSubqueries = childConfigs
         .filter((c) => c.selected)
-        .map((c) => `(SELECT Id, ${c.foreignKeyField} FROM ${c.relationshipName})`);
+        .map((c) => `(SELECT Id, ${assertApiName(c.foreignKeyField)} FROM ${assertApiName(c.relationshipName)})`);
 
-      const queryFields = [...selectedFields, ...childSubqueries].join(', ');
-      let rootSoql = `SELECT ${queryFields} FROM ${selectedRootObject}`;
+      const queryFields = [...selectedFields.map(assertApiName), ...childSubqueries].join(', ');
+      let rootSoql = `SELECT ${queryFields} FROM ${assertApiName(selectedRootObject)}`;
       if (whereClause && whereClause.trim().length > 0) {
         rootSoql += ` WHERE ${whereClause}`;
       }
-      rootSoql += ` LIMIT ${recordLimit}`;
+      rootSoql += ` LIMIT ${Math.max(1, Math.min(50000, Math.floor(Number(recordLimit)) || 1))}`;
 
       addLog(`Executing Source SOQL query: ${rootSoql.substring(0, 100)}...`, 'info');
       const rootRecords = await ApiClient.querySOQL<SObjectRecordData>(
@@ -127,8 +128,8 @@ export const Step5ExecutionConsole: React.FC = () => {
             .map((f) => f.name)
             .join(', ');
 
-          const formattedIds = parentIds.map((id) => `'${id}'`).join(', ');
-          const parentSoql = `SELECT ${pFields} FROM ${p.parentObjectApiName} WHERE Id IN (${formattedIds})`;
+          const formattedIds = formatIdList(parentIds);
+          const parentSoql = `SELECT ${pFields} FROM ${assertApiName(p.parentObjectApiName)} WHERE Id IN (${formattedIds})`;
 
           const pRecords = await ApiClient.querySOQL<SObjectRecordData>(
             sourceSession.instanceUrl,

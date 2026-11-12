@@ -1,10 +1,12 @@
 /**
- * AuthManager: Supports Direct Username/Password Login with Auto-Renewal
+ * AuthManager: Direct Username/Password (SOAP) login. Passwords are never persisted;
+ * expired sessions require the user to log in again.
  */
 
 import { StoredTargetOrg } from './types';
 
 const STORAGE_TARGET_ORGS_KEY = 'salesforce_data_seeder_target_orgs';
+// Legacy key: older versions cached credentials here. Now only cleared, never written.
 const STORAGE_CREDENTIALS_SESSION_KEY = 'salesforce_session_creds_map';
 
 export interface DirectLoginParams {
@@ -78,11 +80,10 @@ export class AuthManager {
       await this.saveTargetOrg(storedOrg);
     }
 
+    // The password is used only for this SOAP login call and is never persisted.
+    // Remove any credentials cached by older versions of the extension.
     try {
-      const credResult = await chrome.storage.session.get(STORAGE_CREDENTIALS_SESSION_KEY);
-      const credMap = (credResult[STORAGE_CREDENTIALS_SESSION_KEY] as Record<string, DirectLoginParams>) || {};
-      credMap[alias] = { alias, loginUrl: cleanLoginUrl, username, password };
-      await chrome.storage.session.set({ [STORAGE_CREDENTIALS_SESSION_KEY]: credMap });
+      await chrome.storage.session.remove(STORAGE_CREDENTIALS_SESSION_KEY);
     } catch {
       // continue
     }
@@ -91,28 +92,23 @@ export class AuthManager {
   }
 
   /**
-   * Transparently renews expired target org session using session-cached credentials.
+   * Passwords are not stored, so an expired target session cannot be renewed silently.
+   * The caller must surface this error and prompt the user to log in again.
    */
   public static async renewTargetSession(alias: string): Promise<StoredTargetOrg> {
-    try {
-      const credResult = await chrome.storage.session.get(STORAGE_CREDENTIALS_SESSION_KEY);
-      const credMap = (credResult[STORAGE_CREDENTIALS_SESSION_KEY] as Record<string, DirectLoginParams>) || {};
-      const savedCreds = credMap[alias];
+    throw new Error(`Session for '${alias}' has expired. Please log in again to reconnect this org.`);
+  }
 
-      if (!savedCreds) {
-        throw new Error(`Session for '${alias}' has expired and credentials are not cached in session. Please re-authenticate.`);
-      }
-
-      console.info(`[AuthManager] Auto-renewing session for '${alias}'...`);
-      return await this.loginWithUsernamePassword({
-        alias,
-        loginUrl: savedCreds.loginUrl,
-        username: savedCreds.username,
-        password: savedCreds.password
-      });
-    } catch (err: unknown) {
-      throw new Error(`Failed to auto-renew session for '${alias}': ${err instanceof Error ? err.message : String(err)}`);
+  /**
+   * Re-reads the source session from the active Salesforce tab cookie. Passwords are not
+   * stored, so a Direct Login source session that expired requires the user to log in again.
+   */
+  public static async renewSourceSession(): Promise<{ instanceUrl: string; sessionId: string }> {
+    const res = await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_ORG_SESSION' });
+    if (res && res.success && res.data) {
+      return res.data;
     }
+    throw new Error('Source session expired. Please refresh the Salesforce tab or log in again via Direct Login.');
   }
 
   public static async getTargetOrgs(): Promise<StoredTargetOrg[]> {
@@ -138,14 +134,6 @@ export class AuthManager {
     const filtered = existing.filter(o => o.alias !== alias);
     await chrome.storage.local.set({ [STORAGE_TARGET_ORGS_KEY]: filtered });
 
-    try {
-      const credResult = await chrome.storage.session.get(STORAGE_CREDENTIALS_SESSION_KEY);
-      const credMap = (credResult[STORAGE_CREDENTIALS_SESSION_KEY] as Record<string, DirectLoginParams>) || {};
-      delete credMap[alias];
-      await chrome.storage.session.set({ [STORAGE_CREDENTIALS_SESSION_KEY]: credMap });
-    } catch {
-      // continue
-    }
   }
 
   private static escapeXml(unsafe: string): string {

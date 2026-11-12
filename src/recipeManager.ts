@@ -3,6 +3,7 @@
  */
 
 import { ApiClient } from './apiClient';
+import { assertApiName, formatIdList } from './soqlUtils';
 import {
   SeedingRecipe,
   SObjectDescribe,
@@ -95,11 +96,14 @@ export class RecipeManager {
 
     const records: Array<{ Id: string }> = [];
     const ID_CHUNK_SIZE = 50;
+    const safeObject = assertApiName(objectApiName);
+    const safeExtField = assertApiName(extIdFieldName);
+    const cleanInstanceUrl = targetOrg.instanceUrl.replace(/\/+$/, '');
 
     for (let i = 0; i < sourceRecordIds.length; i += ID_CHUNK_SIZE) {
       const idChunk = sourceRecordIds.slice(i, i + ID_CHUNK_SIZE);
-      const formattedIds = idChunk.map(id => `'${id}'`).join(',');
-      const soql = `SELECT Id, ${extIdFieldName} FROM ${objectApiName} WHERE ${extIdFieldName} IN (${formattedIds})`;
+      const formattedIds = formatIdList(idChunk);
+      const soql = `SELECT Id, ${safeExtField} FROM ${safeObject} WHERE ${safeExtField} IN (${formattedIds})`;
 
       const chunkRecords = await ApiClient.querySOQL<{ Id: string }>(
         targetOrg.instanceUrl,

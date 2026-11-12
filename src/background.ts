@@ -51,6 +51,36 @@ function parseSalesforceDomain(urlString?: string): { isSalesforce: boolean; dom
   }
 }
 
+/**
+ * Finds the 'sid' cookie belonging to exactly this org. Only cookies whose domain
+ * equals the org's API host or the tab's host are accepted -- never another org's session.
+ */
+async function findOrgSidCookie(
+  apiHost: string | undefined,
+  domain: string | undefined,
+  tabUrl: string | undefined
+): Promise<chrome.cookies.Cookie | null> {
+  const allowedHosts = new Set([apiHost, domain].filter((h): h is string => !!h).map(h => h.toLowerCase()));
+  const isExactMatch = (c: chrome.cookies.Cookie): boolean =>
+    !!c && c.name === 'sid' && !!c.value && !!c.domain &&
+    allowedHosts.has(c.domain.replace(/^\./, '').toLowerCase());
+
+  const urls: string[] = [];
+  if (apiHost) urls.push(`https://${apiHost}/`);
+  if (tabUrl) urls.push(tabUrl);
+
+  for (const url of urls) {
+    try {
+      const cookies = await chrome.cookies.getAll({ url, name: 'sid' });
+      const match = cookies.find(isExactMatch);
+      if (match) return match;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
 async function getActiveSalesforceSession(tabId?: number): Promise<SalesforceOrgSession | null> {
   let activeTab: chrome.tabs.Tab | undefined;
 
@@ -66,39 +96,8 @@ async function getActiveSalesforceSession(tabId?: number): Promise<SalesforceOrg
   const { isSalesforce, domain, apiHost, instanceUrl, isSandbox } = parseSalesforceDomain(activeTab.url);
   if (!isSalesforce || !domain || !instanceUrl) return null;
 
-  let sessionCookie: chrome.cookies.Cookie | undefined | null = null;
-
-  // 1. Check API domain
-  if (apiHost) {
-    try {
-      const apiDomainCookies = await chrome.cookies.getAll({ domain: apiHost });
-      sessionCookie = apiDomainCookies.find(c => c.name === 'sid' && c.value);
-    } catch {
-      // continue
-    }
-  }
-
-  // 2. Check tab URL
-  if (!sessionCookie) {
-    try {
-      const tabCookies = await chrome.cookies.getAll({ url: activeTab.url });
-      sessionCookie = tabCookies.find(c => c.name === 'sid' && c.value);
-    } catch {
-      // continue
-    }
-  }
-
-  // 3. Fallback to all matching cookies
-  if (!sessionCookie) {
-    const allCookies = await chrome.cookies.getAll({ name: 'sid' });
-    sessionCookie = allCookies.find(c => apiHost && apiHost.includes(c.domain.replace(/^\./, '')));
-    if (!sessionCookie) {
-      sessionCookie = allCookies.find(c => domain.includes(c.domain.replace(/^\./, '')));
-    }
-    if (!sessionCookie && allCookies.length > 0) {
-      sessionCookie = allCookies[0];
-    }
-  }
+  // Exact domain match only: never fall back to another org's session cookie.
+  const sessionCookie = await findOrgSidCookie(apiHost, domain, activeTab.url);
 
   if (!sessionCookie || !sessionCookie.value) {
     return {
@@ -135,7 +134,7 @@ chrome.runtime.onMessage.addListener((
           if (!session || !session.sessionId) {
             sendResponse({
               success: false,
-              error: 'No active Salesforce session detected in current tab. Please refresh the Salesforce tab.'
+              error: 'No Salesforce session cookie found for the exact org domain of this tab domain. Log in to that org in this tab (or refresh it), then retry.'
             });
           } else {
             sendResponse({ success: true, data: session });
